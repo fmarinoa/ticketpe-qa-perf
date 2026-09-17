@@ -14,8 +14,11 @@ flowchart LR
   end
   T --> L[lib/common.js<br/>config · cliente HTTP etiquetado<br/>datos · perfiles de carga · red base]
   L --> S[(TicketPe<br/>/api/core · /api/v1)]
-  T --> O[reports/<br/>summary JSON · dashboard HTML<br/>informe HTML · index]
-  O --> P[GitHub Actions<br/>perf-esc01 → Pages]
+  T --> O[reports/<br/>summary JSON · dashboard HTML<br/>informe HTML + resumen MD]
+  F[framework/<br/>informe.test.js · salud.js] -. gates .-> T
+  O --> IA[scripts/analizar-corrida.sh<br/>Copilot CLI]
+  IA --> P[run.sh index<br/>index · badge · resumen]
+  P --> G[GitHub Pages + Job Summary]
 ```
 
 ## Capas
@@ -25,9 +28,11 @@ flowchart LR
 | `tests/` | Un caso de R3 por archivo: cabecera de trazabilidad, `options` (perfil + umbrales = resultado esperado), flujo | El umbral **es** el resultado esperado de R3: si falla, k6 sale ≠ 0 |
 | `lib/common.js` | Todo lo transversal (ver abajo) | Nada de lógica de caso aquí |
 | `run.sh` | Ejecuta en orden de archivo (núcleo → agente → saturación), exporta evidencias, agrega criterio de salida | `smoke` antes de `full` |
-| `lib/informe.js` | `handleSummary`: veredicto por oráculo, validez, red vs servidor, ruido, borrador R4 → `TC-PERF-0X-<perfil>-informe.html` | Nunca publica claves `*token*` de `setup_data` |
-| `reports/` | `TC-PERF-0X-<perfil>.json` (summary), `.html` (dashboard k6), `-informe.html`, `index.html` | No se versiona; en CI se publica en Pages |
-| `.github/workflows/perf-esc01.yml` | Matrix TC-PERF-01…03 con `max-parallel: 1` (`fail-fast: false`) + job `publish` (`if: always()`) → `run.sh index` → Pages (https://fmarinoa.github.io/ticketpe-qa-perf/) | Manual (`workflow_dispatch`, input `perfil`), `concurrency: perf`, solo `vars.TEAM` |
+| `lib/informe.js` | `handleSummary`: veredicto por oráculo, validez, red vs servidor, ruido, borrador R4 → `TC-PERF-0X-<perfil>-informe.html` + `-resumen.md` | Nunca publica claves `*token*` de `setup_data` |
+| `framework/` | TAS: `informe.test.js` verifica el análisis sin red · `salud.js` es el gate de salud del ambiente | Se ejecuta antes de generar carga (job `gates`) |
+| `scripts/analizar-corrida.sh` | Análisis IA (Copilot CLI) de toda corrida → `reports/analisis-ia.md` | Sugiere, no bloquea |
+| `reports/` | `TC-PERF-0X-<perfil>.json` (summary), `.html` (dashboard k6), `-informe.html`, `-resumen.md`, `index.html`, `resumen.md`, `badge.json`, `analisis-ia.md` | No se versiona; en CI se publica en Pages |
+| `.github/workflows/perf-esc01.yml` | `gates` (TAS + salud) → `run` (matrix TC-PERF-01…03, `max-parallel: 1`, `fail-fast: false`) → `publish` (`if: always()`): análisis IA → `run.sh index` → Job Summary → Pages (https://fmarinoa.github.io/ticketpe-qa-perf/) | Manual (`workflow_dispatch`, input `perfil`), `concurrency: perf`, solo `vars.TEAM`, actions fijadas por hash |
 
 ## Anatomía de un caso (`tests/escNN-cpNN-<nombre>.js`)
 
@@ -36,7 +41,7 @@ flowchart LR
    - `tags`: `tc`, `escenario`, `prioridad`, `severidad` → se propagan a todas las métricas (filtrables en dashboard/salidas).
    - `scenarios`: `loadProfile()` (warm-up + steady, solo TC-PERF-01) o executor propio (`constant-arrival-rate`, `per-vu-iterations`, `constant-vus`) con variante `SMOKE`.
    - `thresholds`: oráculo de R3 + `SUSPENSION` cuando aplica.
-3. **`handleSummary = (d) => informe(d, options, título)`** + `summaryTrendStats: STATS` (agrega `count` para detectar métricas sin muestras).
+3. **`handleSummary = resumirCon(options, título)`** + `summaryTrendStats: STATS` (agrega `count` para detectar métricas sin muestras).
 4. **`setup()`:** `exigirEnv()` + `networkBaseline()` + datos (login, eventos).
 5. **Flujo:** llamadas vía `api()`/`agente()` con `name` estable por endpoint.
 

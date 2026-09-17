@@ -12,7 +12,7 @@ export GIT_SHA=${GIT_SHA:-$(git rev-parse --short HEAD 2>/dev/null)} RUNNER=${GI
 # Índice de informes (local y Pages): veredicto tomado del <title> de cada informe.
 index() {
   { echo '<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ticketpe-qa-perf · resultados</title>'
-    echo '<style>body{font:14px/1.6 system-ui,sans-serif;max-width:960px;margin:0 auto;padding:24px 16px;background:#fafafa}li{margin:4px 0}</style>'
+    echo '<style>body{font:14px/1.6 system-ui,sans-serif;max-width:960px;margin:0 auto;padding:24px 16px;background:#fafafa;color:#1d1d1f}li{margin:4px 0}#ia{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:4px 16px}#ia h2{font-size:18px}#ia h3{font-size:15px}</style>'
     echo "<h1>ticketpe-qa-perf · resultados</h1><p>Generado $(TZ=America/Lima date '+%F %R') UTC-5 · commit ${GIT_SHA:-—}</p><ul>"
     for f in reports/*-informe.html; do
       [ -f "$f" ] || continue
@@ -20,8 +20,11 @@ index() {
       echo "<li><a href=\"${f#reports/}\">$(grep -o -m1 '<title>[^<]*' "$f" | cut -c8-)</a>$([ -f "$d" ] && echo " · <a href=\"${d#reports/}\">dashboard k6</a>")</li>"
     done
     echo '</ul>'
-    [ -s reports/analisis-ia.md ] && echo '<h2>Análisis IA de la corrida</h2><pre style="white-space:pre-wrap;background:#fff;border:1px solid #d0d7de;padding:12px">' \
-      && sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' reports/analisis-ia.md && echo '</pre>'
+    # El markdown de la IA se renderiza en el navegador (marked); DOMPurify evita inyectar HTML desde la salida del modelo.
+    [ -s reports/analisis-ia.md ] && echo '<h2>Análisis IA de la corrida</h2><div id="ia"></div><script type="text/markdown" id="ia-md">' \
+      && sed 's#</script#<\\/script#g' reports/analisis-ia.md \
+      && echo '</script><script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script><script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>' \
+      && echo '<script>document.getElementById("ia").innerHTML=DOMPurify.sanitize(marked.parse(document.getElementById("ia-md").textContent))</script>'
     echo '</html>'
   } > reports/index.html
 

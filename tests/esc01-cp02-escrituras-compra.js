@@ -7,7 +7,7 @@
 import { check } from 'k6';
 import { Rate } from 'k6/metrics';
 import { api, login, exigirEnv, registro, eventos, networkBaseline, SUSPENSION, SMOKE, ADMIN } from '../lib/common.js';
-import { informe, STATS } from '../lib/informe.js';
+import { resumirCon, STATS } from '../lib/informe.js';
 
 const errorNucleo = new Rate('error_escrituras'); // solo reserva/pago/check-in: el registro no se mide
 const respuesta5xx = new Rate('respuesta_5xx');
@@ -28,7 +28,7 @@ export const options = {
   },
 };
 
-export const handleSummary = (data) => informe(data, options, 'Las escrituras del núcleo cumplen p95 menor a 1 s');
+export const handleSummary = resumirCon(options, 'Las escrituras del núcleo cumplen p95 menor a 1 s');
 
 export function setup() {
   exigirEnv('TEAM');

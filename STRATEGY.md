@@ -160,7 +160,7 @@ Métricas transversales en todos los scripts: `red_base_ms` (latencia de red bas
 
 ## 11. Informe de resultados (automático)
 
-`lib/informe.js` genera `reports/TC-PERF-0X-<perfil>-informe.html` al cierre de cada caso (`handleSummary`) y `run.sh` arma `reports/index.html`; en CI (`perf-esc01`) se publica la última corrida en https://fmarinoa.github.io/ticketpe-qa-perf/ (sitio público).
+`lib/informe.js` genera `reports/TC-PERF-0X-<perfil>-informe.html` al cierre de cada caso (`handleSummary`) y `-resumen.md`; `run.sh index` arma `reports/index.html`, `resumen.md` (Job Summary) y `badge.json`; en CI (`perf-esc01`) se publica la última corrida en https://fmarinoa.github.io/ticketpe-qa-perf/ (sitio público).
 
 | Regla de análisis | Cómo se calcula | Resultado |
 |---|---|---|

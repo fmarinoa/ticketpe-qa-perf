@@ -1,5 +1,5 @@
 # ESC01 (API del núcleo) en GitHub Actions. Un rojo dice de quién es el problema antes de abrir un log:
-#   gates (TAS + salud del ambiente) → casos TC-PERF-01..03 en fila → publish (Job Summary, triage IA, badge, Pages).
+#   gates (TAS + salud del ambiente) → casos TC-PERF-01..03 en fila → publish (análisis IA, Job Summary, badge, Pages).
 # En fila (max-parallel 1) para que la carga de un caso no contamine la medición de otro.
 name: perf-esc01
 

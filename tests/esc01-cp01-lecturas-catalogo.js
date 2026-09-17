@@ -5,7 +5,7 @@
 // Oráculo: p95 de cada endpoint < 500 ms y tasa de error < 1 %.
 import { check, group, sleep } from 'k6';
 import { api, registro, exigirEnv, eventos, networkBaseline, loadProfile, SUSPENSION, SMOKE, think } from '../lib/common.js';
-import { informe, STATS } from '../lib/informe.js';
+import { resumirCon, STATS } from '../lib/informe.js';
 
 export const options = {
   tags: { tc: 'TC-PERF-01', escenario: 'ESC01-CP01', prioridad: 'P2', severidad: 'Alto' },
@@ -22,7 +22,7 @@ export const options = {
   },
 };
 
-export const handleSummary = (data) => informe(data, options, 'Las lecturas del núcleo cumplen p95 menor a 500 ms');
+export const handleSummary = resumirCon(options, 'Las lecturas del núcleo cumplen p95 menor a 500 ms');
 
 export function setup() {
   exigirEnv('TEAM');

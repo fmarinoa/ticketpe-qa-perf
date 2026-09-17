@@ -20,7 +20,7 @@ EVIDENCIA=$({
 PROMPT="Eres QA performance lead (ISTQB CT-PT). Analiza esta corrida k6 contra TicketPe (entorno compartido por 22 equipos).
 Puedes leer tests/*.js, lib/*.js y STRATEGY.md del repo para entender cada caso y su oráculo (matriz R3).
 Columnas: 'Servidor ≈' = latencia − p50 de red base; 'Red / presupuesto' = cuánto del umbral consume la red.
-Responde en español, markdown, máximo 400 palabras. Por cada caso:
+Responde en español, markdown, máximo 400 palabras, directo con el análisis (sin preámbulo ni frases sobre lo que vas a hacer). Por cada caso:
 - PASA: ¿es confiable? (muestras suficientes, margen contra el umbral, estabilidad de la red)
 - NO CONCLUYENTE: por qué y qué falta para concluir
 - FALLA: causa raíz probable (métrica, valor, umbral) y clasificación SUT_LENTO | RED | DATOS | AMBIENTE | TAS | RUIDO_COMPARTIDO

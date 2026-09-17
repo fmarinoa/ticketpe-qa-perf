@@ -5,7 +5,7 @@
 // Oráculo: cada respuesta < 2 s. "Una sola consulta, sin N+1" no es observable desde caja negra: se registra, no se evalúa.
 import { check } from 'k6';
 import { api, login, eventos, networkBaseline, SMOKE, ADMIN } from '../lib/common.js';
-import { informe, STATS } from '../lib/informe.js';
+import { resumirCon, STATS } from '../lib/informe.js';
 
 export const options = {
   tags: { tc: 'TC-PERF-03', escenario: 'ESC01-CP03', prioridad: 'P2', severidad: 'Medio' },
@@ -19,7 +19,7 @@ export const options = {
 
 const ventas = (token, id, name = 'GET /reportes/ventas') => api('GET', `/api/core/reportes/ventas?evento_id=${id}`, { token, name });
 
-export const handleSummary = (data) => informe(data, options, 'El reporte de ventas del evento con más ventas responde en menos de 2 s');
+export const handleSummary = resumirCon(options, 'El reporte de ventas del evento con más ventas responde en menos de 2 s');
 
 // Admin: único rol que ve el reporte de cualquier evento (solo lectura) -> permite elegir el de más ventas.
 export function setup() {
