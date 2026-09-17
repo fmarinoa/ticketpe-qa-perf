@@ -21,6 +21,23 @@ index() {
     done
     echo '</ul></html>'
   } > reports/index.html
+
+  # Veredicto agregado (Job Summary y badge de shields.io, servido desde Pages porque el repo es privado).
+  total=0 pasa=0 falla=0
+  for f in reports/*-informe.html; do
+    [ -f "$f" ] || continue
+    t=$(grep -o -m1 '<title>[^<]*' "$f"); total=$((total + 1))
+    case $t in *'· PASA ·'*) pasa=$((pasa + 1)) ;; *'· FALLA ·'*) falla=$((falla + 1)) ;; esac
+  done
+  if [ "$total" -eq 0 ]; then estado="SIN DATOS" msg="sin datos" color=lightgrey
+  elif [ "$falla" -gt 0 ]; then estado=ROJO msg="$falla FALLA" color=red
+  elif [ "$pasa" -eq "$total" ]; then estado=VERDE msg="$pasa/$total PASA" color=brightgreen
+  else estado="NO CONCLUYENTE" msg="$pasa/$total PASA" color=yellow; fi
+  printf '{"schemaVersion":1,"label":"Performance","message":"%s","color":"%s"}\n' "$msg" "$color" > reports/badge.json
+  { echo "## Resultado"; echo
+    echo "**$estado** · $total casos · $pasa PASA · $falla FALLA · $((total - pasa - falla)) NO CONCLUYENTE · commit ${GIT_SHA:-—}"; echo
+    cat reports/*-resumen.md 2>/dev/null
+  } > reports/resumen.md
 }
 [ "$PROFILE" = index ] && { index; exit 0; }
 fallos=()

@@ -113,7 +113,7 @@ Métricas transversales en todos los scripts: `red_base_ms` (latencia de red bas
 ## 7. Criterios de entrada, suspensión y salida
 
 **Entrada (por corrida):**
-1. `./run.sh smoke <TC>` pasa (shakedown 1 VU: script, datos y contrato OK) — *gate* obligatorio antes de `full`.
+1. `smoke` pasa (shakedown 1 VU: script, datos y contrato OK) — *gate* obligatorio antes de `full`: `./run.sh smoke <TC|esc0X>` en local o `gh workflow run perf-esc01 -f perfil=smoke` en CI.
 2. `GET /api/core/health` y `/api/v1/health` responden `200`.
 3. Login de cuentas y descubrimiento de datos en `setup()` OK (si no, el script aborta con `Criterio de entrada: …`).
 4. Variables sin fallback definidas: `TEAM` (TC-01/02) y `TEAM_TOKEN` propio (TC-04…07); el `setup()` aborta si faltan.
@@ -144,7 +144,7 @@ Métricas transversales en todos los scripts: `red_base_ms` (latencia de red bas
 | Planificación | Este documento | `STRATEGY.md` |
 | Análisis y diseño | README L333–L339 + R2 §6 → matriz R3 `Performance.tsv` → perfiles y oráculos (§4) | Matriz §4.3 |
 | Implementación | Framework k6 (ver `ARCHITECTURE.md`) | `lib/`, `tests/`, `run.sh` |
-| Ejecución | `smoke` → `full`, fuera de horas pico | `reports/*.json`, `reports/*.html` |
+| Ejecución | `smoke` → `full`, fuera de horas pico · ESC01 en GitHub Actions (`perf-esc01`), ESC02/03 en local | `reports/*.json`, `reports/*.html`, artifacts de CI |
 | Evaluación y reporte | Contrastar umbrales, separar red/servidor, reportar hallazgos con evidencia | Informe (§11) + bugs R4 |
 | Cierre | Archivar reportes, lecciones aprendidas, supuestos a validar con PO | Commit en rama `testitans` |
 
@@ -160,7 +160,7 @@ Métricas transversales en todos los scripts: `red_base_ms` (latencia de red bas
 
 ## 11. Informe de resultados (automático)
 
-`lib/informe.js` genera `reports/TC-PERF-0X-<perfil>-informe.html` al cierre de cada caso (`handleSummary`) y `run.sh` arma `reports/index.html`; en CI se publica en Pages.
+`lib/informe.js` genera `reports/TC-PERF-0X-<perfil>-informe.html` al cierre de cada caso (`handleSummary`) y `run.sh` arma `reports/index.html`; en CI (`perf-esc01`) se publica la última corrida en https://fmarinoa.github.io/ticketpe-qa-perf/ (sitio público).
 
 | Regla de análisis | Cómo se calcula | Resultado |
 |---|---|---|

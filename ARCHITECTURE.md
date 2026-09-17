@@ -27,7 +27,7 @@ flowchart LR
 | `run.sh` | Ejecuta en orden de archivo (núcleo → agente → saturación), exporta evidencias, agrega criterio de salida | `smoke` antes de `full` |
 | `lib/informe.js` | `handleSummary`: veredicto por oráculo, validez, red vs servidor, ruido, borrador R4 → `TC-PERF-0X-<perfil>-informe.html` | Nunca publica claves `*token*` de `setup_data` |
 | `reports/` | `TC-PERF-0X-<perfil>.json` (summary), `.html` (dashboard k6), `-informe.html`, `index.html` | No se versiona; en CI se publica en Pages |
-| `.github/workflows/perf-esc01.yml` | Matrix TC-PERF-01…03 con `max-parallel: 1` + job `publish` (`if: always()`) a Pages | Manual (`workflow_dispatch`), `concurrency: perf` |
+| `.github/workflows/perf-esc01.yml` | Matrix TC-PERF-01…03 con `max-parallel: 1` (`fail-fast: false`) + job `publish` (`if: always()`) → `run.sh index` → Pages (https://fmarinoa.github.io/ticketpe-qa-perf/) | Manual (`workflow_dispatch`, input `perfil`), `concurrency: perf`, solo `vars.TEAM` |
 
 ## Anatomía de un caso (`tests/escNN-cpNN-<nombre>.js`)
 
