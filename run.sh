@@ -19,7 +19,10 @@ index() {
       d=${f%-informe.html}.html
       echo "<li><a href=\"${f#reports/}\">$(grep -o -m1 '<title>[^<]*' "$f" | cut -c8-)</a>$([ -f "$d" ] && echo " · <a href=\"${d#reports/}\">dashboard k6</a>")</li>"
     done
-    echo '</ul></html>'
+    echo '</ul>'
+    [ -s reports/analisis-ia.md ] && echo '<h2>Análisis IA de la corrida</h2><pre style="white-space:pre-wrap;background:#fff;border:1px solid #d0d7de;padding:12px">' \
+      && sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' reports/analisis-ia.md && echo '</pre>'
+    echo '</html>'
   } > reports/index.html
 
   # Veredicto agregado (Job Summary y badge de shields.io, servido desde Pages porque el repo es privado).
@@ -37,6 +40,7 @@ index() {
   { echo "## Resultado"; echo
     echo "**$estado** · $total casos · $pasa PASA · $falla FALLA · $((total - pasa - falla)) NO CONCLUYENTE · commit ${GIT_SHA:-—}"; echo
     cat reports/*-resumen.md 2>/dev/null
+    [ -s reports/analisis-ia.md ] && { echo "## Análisis IA de la corrida"; echo; cat reports/analisis-ia.md; }
   } > reports/resumen.md
 }
 [ "$PROFILE" = index ] && { index; exit 0; }

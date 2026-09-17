@@ -181,3 +181,66 @@ Metadatos: fecha UTC-5, commit (`GIT_SHA`), runner (`local` / `github-actions`),
 | 2 | El `429` responde `{error, mensaje}` + `Retry-After`; A-79 (R2) exigía `{codigo, mensaje}`. El contrato real (Swagger) es `{error}` → **corregir A-79**, no es defecto | Check informativo del caso de límite de tasa anterior | — (ajuste de AC) |
 | 3 | Espacio del token compartido saturado permanentemente → 100 % `429`, incluso en modo réplica | `agente_429_reintentados` en el smoke del caso de turno con herramienta | Riesgo de proyecto (§10) |
 | 4 | Latencia de red base ~130–150 ms desde Lima: el objetivo de 500 ms deja ~350 ms reales al servidor | `red_base_ms` | Informativo |
+
+## 13. Ingeniería de la automatización (TAS)
+
+La suite de performance también es software: si falla, **no debe disfrazarse de fallo del SUT**. Vocabulario: ISTQB CT-PT (proceso) y CTAL-TAE (TAS vs SUT, gTAA).
+
+### 13.1 TAS y SUT se prueban por separado
+
+| | SUT | TAS |
+|---|---|---|
+| Qué es | API TicketPe Núcleo (`/api/core`) | esta suite k6 + el análisis automático |
+| Quién lo prueba | `tests/esc01-*.js` | `framework/informe.test.js` (sin red) + `k6 inspect` |
+| Veredicto | `reports/TC-PERF-0X-<perfil>-informe.html` | job `gates` de CI |
+
+`informe.js` decide PASA/FALLA/NO CONCLUYENTE: si clasificara mal, el informe publicado culparía o absolvería al SUT. Por eso tiene su propia verificación (umbral sin muestras ⇒ nunca PASA, smoke ⇒ NO CONCLUYENTE, red vs servidor, aviso de ruido, borrador R4 solo si FALLA, nunca publica tokens).
+
+### 13.2 gTAA: dónde cae cada archivo
+
+| Capa gTAA | Aquí |
+|---|---|
+| Test Generation | — (hueco consciente: los perfiles de carga salen de la matriz R3, no de un modelo) |
+| Test Definition | `tests/escNN-cpNN-*.js`: `options` (perfil + umbrales = resultado esperado de R3) |
+| Test Adaptation | `lib/common.js` (cliente HTTP, datos, perfiles, red base) |
+| Test Execution / Reporting | `run.sh`, `lib/informe.js`, `.github/workflows/perf-esc01.yml` |
+
+### 13.3 Clasificación de un rojo (de lo barato a lo caro)
+
+| Step en rojo | Significa | Lo arregla |
+|---|---|---|
+| Verificar el framework (TAS) | la automatización está rota | QA performance |
+| Gate de salud del ambiente | el ambiente está caído: no se genera carga | infraestructura |
+| `Criterio de entrada: …` en un caso | faltan datos o variables (`TEAM`, evento con cupo) | quien lanzó la corrida |
+| Ejecutar TC-PERF-0X | umbral de R3 incumplido: hallazgo de rendimiento candidato | desarrollo (tras triage) |
+
+En **toda** corrida, pase o falle, `scripts/analizar-corrida.sh` pasa los resúmenes a Copilot CLI: valida si un PASA es confiable (muestras, margen, red), explica un NO CONCLUYENTE y clasifica cada FALLA en `SUT_LENTO | RED | DATOS | AMBIENTE | TAS | RUIDO_COMPARTIDO`. El resultado va al Job Summary y al índice de Pages. La IA **sugiere** (`continue-on-error`, nunca bloquea la publicación); la decisión de reportar en R4 es humana.
+
+### 13.4 Riesgos del TAS y mitigación
+
+| Riesgo del TAS | Mitigación |
+|---|---|
+| Umbral que "pasa en vacío" (métrica sin muestras) | `summaryTrendStats` con `count` + veredicto NO CONCLUYENTE + contadores `count>0` |
+| Datos quemados que caducan (evento sin cupo, reset de semilla) | `setup()` descubre el evento con más `disponible` en cada corrida |
+| Culpar al SUT por la red | red base por corrida; columna *Servidor ≈* y aviso de red inestable |
+| Casos que se contaminan entre sí | `max-parallel: 1` y `concurrency: perf` |
+| Publicar secretos en Pages (sitio público) | `informe.js` filtra claves `*token*`; ESC01 no usa secrets |
+| Supply chain del pipeline | actions fijadas por hash de commit |
+| El análisis automático se rompe sin que nadie lo note | `framework/informe.test.js` en el job `gates` |
+
+### 13.5 Métricas y bitácora
+
+| Métrica | De dónde | Dónde se ve |
+|---|---|---|
+| Veredicto por caso y por oráculo, muestras, servidor ≈, red/presupuesto | `lib/informe.js` | Job Summary, Pages, badge |
+| Latencia por endpoint en el tiempo de la corrida | dashboard k6 | Pages (`TC-PERF-0X-<perfil>.html`) |
+| Salud del TAS y del ambiente | job `gates` | GitHub Actions |
+
+| Fecha | Cambio | Motivo |
+|---|---|---|
+| 2026-09-17 | Matriz R3 como única fuente de oráculos | trazabilidad TC → umbral |
+| 2026-09-17 | `informe.js` + `index`/badge | análisis de resultados sin intervención manual |
+| 2026-09-17 | Job `gates` (TAS + salud) | clasificación de fallos |
+| 2026-09-17 | Análisis IA de toda corrida (no solo de fallos) | un PASA frágil o un NO CONCLUYENTE también requieren criterio |
+
+**Backlog (no implementado a propósito):** histórico de corridas en Pages (tendencia de p95 y flakiness de veredicto) · ESC02/ESC03 en CI (requieren decidir el uso del token compartido del agente) · comparación entre runners (Lima vs GitHub).
