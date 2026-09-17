@@ -105,7 +105,7 @@ Métricas transversales en todos los scripts: `red_base_ms` (latencia de red bas
 |---|---|---|
 | Semilla ~5200 entradas | Semilla del sistema (medido: **5511** vendidas en 24 eventos) | Si hay *reset* general, se regenera sola; el `setup()` descubre ids en vez de *hardcodear* |
 | Asistentes de lectura (TC-01) | `POST /auth/registro`, uno por VU (`perf-testitans-…@ticketpe.test`) | Precondición R3: cada VU con su propio asistente |
-| Evento para escrituras (TC-02) | Descubierto en `setup()`: evento futuro con venta abierta cuyo tipo tenga el mayor `disponible` (≥ 300) | Consume ~70 compras de cupo del catálogo compartido (~140 entradas mientras siga el defecto §12 #1); el evento elegido queda en el informe |
+| Evento para escrituras (TC-02) | Descubierto en `setup()`: evento futuro con venta abierta cuyo tipo tenga el mayor `disponible` (≥ 300) | Consume ~73 entradas por corrida `full` del catálogo compartido; el evento elegido queda en el informe |
 | Compradores (TC-02) | `POST /auth/registro` por iteración | No se mide; evita el tope de 4 entradas por persona |
 | Check-in (TC-02) y reporte (TC-03) | `admin@ticketpe.demo` | Check-in del QR emitido; reporte en solo lectura |
 | Mensaje de réplica (TC-06) | Primer mensaje de `MENSAJES` con `runtime.replay_miss false` | Si ninguno está en el corpus, el `setup()` aborta (criterio de entrada) |
@@ -135,7 +135,7 @@ Métricas transversales en todos los scripts: `red_base_ms` (latencia de red bas
 | A-88 | En TC-04/05/06 un `429` no es muestra de latencia: se reintenta según `Retry-After` y se contabiliza en `agente_429_reintentados` | Aísla el ruido del espacio compartido del tiempo de inferencia |
 | A-89 (nuevo) | En TC-07 el `429` se valida contra el schema `Error` de Swagger (`error` requerido); `Retry-After` y ≤ 60 rpm aceptadas ya no son umbral | R3 solo exige "cuerpo Error" |
 | A-90 (nuevo) | TC-07 en réplica sin *pacing*: 8 VUs sin pausa | Con 1 s de pausa y respuestas de ~150 ms la concurrencia real no supera 4 |
-| Retirados | A-78 (aislamiento entre equipos, ex TC-PERF-04), A-85 (oráculo N+1), A-87 (`409` como negocio) y oráculo de sobreventa | Ya no están en la matriz R3; el defecto de pago (§12 #1) debe quedar cubierto en la matriz funcional |
+| Retirados | A-78 (aislamiento entre equipos, ex TC-PERF-04), A-85 (oráculo N+1), A-87 (`409` como negocio) y oráculo de sobreventa | Ya no están en la matriz R3; la observación de pago (§12 #1) no se reproduce al 17/09 |
 
 ## 9. Proceso de prueba (CT-PT) y entregables
 
@@ -173,14 +173,15 @@ Métricas transversales en todos los scripts: `red_base_ms` (latencia de red bas
 
 Metadatos: fecha UTC-5, commit (`GIT_SHA`), runner (`local` / `github-actions`), duración y condición de carga ejecutada.
 
-## 12. Hallazgos tempranos (ejecución smoke, 16/09/2026, versión previa de la matriz)
+## 12. Hallazgos y observaciones (smoke 16/09 con la versión previa de la matriz · revisión 17/09)
 
 | # | Hallazgo | Evidencia | Severidad propuesta |
 |---|---|---|---|
-| 1 | **`POST /reservas/:id/pago` emite 2 entradas para una reserva de `cantidad: 1`** y cobra solo 1 (total = precio × 1,18). Reproducido en 6/6 intentos (4 en smoke k6 + 2 manuales con curl, con y sin `Idempotency-Key`). Entradas no pagadas consumen aforo → riesgo de sobreventa. **La matriz actual ya no lo verifica en TC-PERF-02** | Check `pago emite exactamente 1 entrada por 1 reservada` (TC-PERF-02 anterior); respuesta `entradas[2]` con `desglose.total` de 1 unidad | Crítico (dinero / cupo) |
+| 1 | ~~`POST /reservas/:id/pago` emite 2 entradas para una reserva de `cantidad: 1`~~ **No se reproduce.** El 16/09 se observó en 6/6 intentos (smoke k6 + curl); el 17/09 01:2x UTC-5 una reserva de `cantidad: 1` en el evento 20 emitió 1 entrada y `mis-entradas` devolvió 1. Posible corrección del SUT o reset: se vigila como regresión, no se reporta en R4 | 16/09: check de TC-PERF-02 anterior · 17/09: `entradas.length = 1` tras el pago | — (no reproduce) |
 | 2 | El `429` responde `{error, mensaje}` + `Retry-After`; A-79 (R2) exigía `{codigo, mensaje}`. El contrato real (Swagger) es `{error}` → **corregir A-79**, no es defecto | Check informativo del caso de límite de tasa anterior | — (ajuste de AC) |
 | 3 | Espacio del token compartido saturado permanentemente → 100 % `429`, incluso en modo réplica | `agente_429_reintentados` en el smoke del caso de turno con herramienta | Riesgo de proyecto (§10) |
 | 4 | Latencia de red base ~130–150 ms desde Lima: el objetivo de 500 ms deja ~350 ms reales al servidor | `red_base_ms` | Informativo |
+| 5 | El `429` dice *"las demás esperan en cola"* pero rechaza la petición de inmediato | cuerpo `{"error":"limite_de_concurrencia","mensaje":"Máximo 4 peticiones concurrentes por espacio; las demás esperan en cola."}` (17/09) | Candidato a R4 (texto o comportamiento) |
 
 ## 13. Ingeniería de la automatización (TAS)
 
