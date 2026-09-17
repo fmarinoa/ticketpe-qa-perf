@@ -207,6 +207,21 @@ run.sh                                  runner local y de CI, índice, badge y r
 | `esc02-cp06-modo-replica.js` | TC-PERF-06 | P2 / Bajo | 1 VU · 20 turnos réplica | — |
 | `esc03-cp07-limite-de-tasa.js` | TC-PERF-07 | P2 / Alto | 8 VUs concurrentes · 90 s réplica (`REPLAY=off`: 70 mensajes en 1 min) | — |
 
+## Sincronización con testathon2026
+
+Este repo es la **fuente de verdad**. Se publica como `git subtree` en `testathon2026` (rama `testitans`),
+en `R6-pruebas-rendimiento/TicketPe-Testing-Performance/`. Flujo en un solo sentido: commit y push acá, después pull allá.
+
+```sh
+cd ../testathon2026                                                     # rama testitans
+git subtree pull --prefix=R6-pruebas-rendimiento/TicketPe-Testing-Performance perf main --squash
+git push origin testitans
+```
+
+- El remoto `perf` apunta a `git@github.com:fmarinoa/ticketpe-qa-perf.git` (en un clon nuevo: `git remote add perf <url>`).
+- **No editar la copia en `testathon2026`**: los cambios van acá, si no el `subtree pull` entra en conflicto.
+- Ahí el workflow no corre (GitHub solo lee `.github/` en la raíz del repo).
+
 ## Documentación
 
 | Documento | Qué responde |
