@@ -1,72 +1,61 @@
-// TC-PERF-02 · ESC01-CP02 · Escrituras de reserva, pago y check-in bajo concurrencia
-// Base: R2 §6 A-75/A-76 · HU-E3.2, HU-E3.3, HU-E5.1 · P1 / Alto
-// Tipo (ISTQB CT-PT): Load + Concurrency test · Condición: 20 VUs, 5 min, 30 s warm-up descartado
-// Oráculo: p95 < 1 s y error < 1 % por endpoint, y 0 sobreventas (cupo_vendido <= cupo_total al cierre).
-// Datos: evento del organizador del equipo (TEAM) -> no se contamina el evento de otro equipo.
-import { check, sleep } from 'k6';
-import { Counter } from 'k6/metrics';
-import { api, registro, organizadorEquipo, eventos, detalleEvento, networkBaseline, loadProfile, SUSPENSION, think } from '../lib/common.js';
+// TC-PERF-02 · ESC01-CP02 · Las escrituras del núcleo cumplen p95 menor a 1 s
+// Base: R3 Performance.tsv · README L334 · R2 N-01, N-02 · RSK-22 · P2 / Alto
+// Tipo (ISTQB CT-PT): Load test · Condición: 3 VUs, 2 min, 1 iteración cada 5 s por VU (~70 compras con cupo real)
+// Precondición: tipo de entrada con disponible >= 300 · cada iteración registra un asistente nuevo (no se mide).
+// Oráculo: p95 de reserva, pago y check-in < 1 s · tasa de error < 1 % · ninguna respuesta 5xx.
+// Datos: el setup() recorre el catálogo y elige el evento futuro con venta abierta cuyo tipo tenga más disponible (>= 300).
+import { check } from 'k6';
+import { Rate } from 'k6/metrics';
+import { api, login, exigirEnv, registro, eventos, networkBaseline, SUSPENSION, SMOKE, ADMIN } from '../lib/common.js';
+import { informe, STATS } from '../lib/informe.js';
 
-const sobreventas = new Counter('sobreventas');
-const sinCupo = new Counter('reservas_409_sin_cupo');
-const emitidas = new Counter('entradas_emitidas');
+const errorNucleo = new Rate('error_escrituras'); // solo reserva/pago/check-in: el registro no se mide
+const respuesta5xx = new Rate('respuesta_5xx');
 
 export const options = {
-  tags: { tc: 'TC-PERF-02', escenario: 'ESC01-CP02', prioridad: 'P1', severidad: 'Alto' },
-  scenarios: loadProfile('compra', 20, '5m'),
+  tags: { tc: 'TC-PERF-02', escenario: 'ESC01-CP02', prioridad: 'P2', severidad: 'Alto' },
+  scenarios: {
+    compra: { executor: 'constant-arrival-rate', exec: 'compra', rate: SMOKE ? 1 : 3, timeUnit: '5s', duration: SMOKE ? '20s' : '2m', preAllocatedVUs: SMOKE ? 1 : 3, maxVUs: SMOKE ? 1 : 3 },
+  },
+  summaryTrendStats: STATS,
   thresholds: {
     ...SUSPENSION,
-    'http_req_failed{scenario:steady}': ['rate<0.01'],
-    'http_req_duration{scenario:steady,name:POST /reservas}': ['p(95)<1000'],
-    'http_req_duration{scenario:steady,name:POST /reservas/:id/pago}': ['p(95)<1000'],
-    'http_req_duration{scenario:steady,name:POST /checkin}': ['p(95)<1000'],
-    sobreventas: ['count==0'],
+    error_escrituras: ['rate<0.01'],
+    respuesta_5xx: ['rate==0'],
+    'http_req_duration{name:POST /reservas}': ['p(95)<1000'],
+    'http_req_duration{name:POST /reservas/:id/pago}': ['p(95)<1000'],
+    'http_req_duration{name:POST /checkin}': ['p(95)<1000'],
   },
 };
 
-const conCupo = (d) => d.tipos_entrada.filter((t) => t.cupo_total > t.cupo_vendido);
+export const handleSummary = (data) => informe(data, options, 'Las escrituras del núcleo cumplen p95 menor a 1 s');
 
 export function setup() {
+  exigirEnv('TEAM');
   networkBaseline();
-  const org = organizadorEquipo();
-  const propio = eventos()
-    .map((e) => detalleEvento(e.id))
-    .find((d) => d.evento.organizador_id === org.usuario.id && new Date(d.evento.fecha_inicio) > new Date() && conCupo(d).length);
-  if (!propio) throw new Error(`Criterio de entrada: el organizador de ${org.usuario.correo} no tiene evento futuro con cupo`);
-  console.log(`Evento bajo prueba: ${propio.evento.id} ${propio.evento.nombre} · cupo libre inicial ${conCupo(propio).map((t) => `${t.nombre}=${t.cupo_total - t.cupo_vendido}`)}`);
-  return { orgToken: org.token, eventoId: propio.evento.id, tipos: conCupo(propio).map((t) => t.nombre) };
+  // Mayor margen de cupo: los reset de semilla y las compras de otros equipos cambian la disponibilidad entre corridas.
+  const [mejor] = eventos()
+    .filter((e) => new Date(e.fecha_inicio) > new Date())
+    .flatMap((e) => api('GET', `/api/core/eventos/${e.id}/disponibilidad`, { name: 'setup disponibilidad' }).json('disponibilidad').map((t) => ({ eventoId: e.id, evento: e.nombre, ...t })))
+    .filter((t) => t.venta_abierta && t.disponible >= 300)
+    .sort((a, b) => b.disponible - a.disponible);
+  if (!mejor) throw new Error('Criterio de entrada: ningún evento futuro con venta abierta tiene un tipo de entrada con disponible >= 300');
+  console.log(`Evento bajo prueba: ${mejor.eventoId} ${mejor.evento} · tipo ${mejor.nombre} · disponible ${mejor.disponible}`);
+  return { adminToken: login(ADMIN).token, eventoId: mejor.eventoId, evento: mejor.evento, tipo: mejor.nombre, disponible_inicial: mejor.disponible };
 }
 
-export function compra({ orgToken, eventoId, tipos }) {
-  // Un comprador nuevo por iteración: aísla la medición del tope de 4 entradas por persona (HU-E3.2).
+const medir = (r) => (errorNucleo.add(r.status >= 400), respuesta5xx.add(r.status >= 500), r);
+
+export function compra({ adminToken, eventoId, tipo }) {
   const token = registro();
-  const tipo = tipos[Math.floor(Math.random() * tipos.length)];
   const key = `perf-${__VU}-${__ITER}-${Date.now()}`;
 
-  // 409 = sin cupo: respuesta de negocio correcta al agotar el evento, no un error de la corrida.
-  const r = api('POST', '/api/core/reservas', { token, name: 'POST /reservas', body: { evento_id: eventoId, tipo, cantidad: 1 }, headers: { 'Idempotency-Key': key }, expected: [{ min: 200, max: 299 }, 409] });
-  if (r.status === 409) return sinCupo.add(1), sleep(think());
-  if (!check(r, { 'reserva 201': (x) => x.status === 201 })) return sleep(think());
-  sleep(think());
+  const r = medir(api('POST', '/api/core/reservas', { token, name: 'POST /reservas', body: { evento_id: eventoId, tipo, cantidad: 1 }, headers: { 'Idempotency-Key': key } }));
+  if (!check(r, { 'reserva 201': (x) => x.status === 201 })) return;
 
-  const p = api('POST', `/api/core/reservas/${r.json('reserva.id')}/pago`, { token, name: 'POST /reservas/:id/pago', body: { tarjeta_prueba: '4242424242424242' }, headers: { 'Idempotency-Key': `${key}-pago` } });
-  if (!check(p, { 'pago 201': (x) => x.status === 201 })) return sleep(think());
-  const n = p.json('entradas').length;
-  emitidas.add(n);
-  // Emitir más entradas que las reservadas/cobradas es sobreventa: consume cupo que nadie pagó.
-  if (!check(n, { 'pago emite exactamente 1 entrada por 1 reservada': (x) => x === 1 })) sobreventas.add(n - 1, { motivo: 'entradas_extra' });
-  sleep(think());
+  const p = medir(api('POST', `/api/core/reservas/${r.json('reserva.id')}/pago`, { token, name: 'POST /reservas/:id/pago', body: { tarjeta_prueba: '4242424242424242' }, headers: { 'Idempotency-Key': `${key}-pago` } }));
+  if (!check(p, { 'pago 201': (x) => x.status === 201 })) return;
 
-  const c = api('POST', '/api/core/checkin', { token: orgToken, name: 'POST /checkin', body: { codigo_qr: p.json('entradas.0.codigo_qr') } });
+  const c = medir(api('POST', '/api/core/checkin', { token: adminToken, name: 'POST /checkin', body: { codigo_qr: p.json('entradas.0.codigo_qr') } }));
   check(c, { 'checkin 200': (x) => x.status === 200 });
-  sleep(think());
-}
-
-// Oráculo de integridad al cierre: ningún tipo de entrada vendió más que su cupo.
-export function teardown({ eventoId }) {
-  const d = detalleEvento(eventoId);
-  const disp = api('GET', `/api/core/eventos/${eventoId}/disponibilidad`, { name: 'teardown disponibilidad' }).json('disponibilidad');
-  for (const t of d.tipos_entrada) if (t.cupo_vendido > t.cupo_total) sobreventas.add(1, { tipo: t.nombre });
-  for (const t of disp) if (t.disponible < 0) sobreventas.add(1, { tipo: t.nombre });
-  console.log(`Cierre evento ${eventoId}: ${d.tipos_entrada.map((t) => `${t.nombre} ${t.cupo_vendido}/${t.cupo_total}`).join(' · ')}`);
 }

@@ -1,0 +1,68 @@
+# ESC01 (API del núcleo) en GitHub Actions: TC-PERF-01..03 en fila (max-parallel 1) para que la carga
+# de un caso no contamine la medición de otro, y publicación del análisis en GitHub Pages.
+name: perf-esc01
+
+on:
+  workflow_dispatch:
+    inputs:
+      perfil:
+        description: smoke = shakedown 1 VU · full = condición de carga de R3
+        type: choice
+        options: [smoke, full]
+        default: smoke
+
+concurrency:
+  group: perf # nunca dos corridas a la vez sobre el entorno compartido
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      max-parallel: 1
+      fail-fast: false # un umbral incumplido no cancela los casos siguientes
+      matrix:
+        tc: [TC-PERF-01, TC-PERF-02, TC-PERF-03]
+    env:
+      TEAM: ${{ vars.TEAM }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: 2.2.0
+      - run: ./run.sh ${{ inputs.perfil }} ${{ matrix.tc }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-${{ matrix.tc }}
+          path: reports/
+
+  publish:
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: reports-*
+          merge-multiple: true
+          path: reports
+      - run: ./run.sh index
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: reports
+      - id: deploy
+        uses: actions/deploy-pages@v4

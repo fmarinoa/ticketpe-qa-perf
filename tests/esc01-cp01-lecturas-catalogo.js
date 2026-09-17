@@ -1,13 +1,17 @@
-// TC-PERF-01 · ESC01-CP01 · Lecturas de catálogo y disponibilidad bajo carga
-// Base: R2 §6 A-75/A-76/A-77 · HU-E2.1, HU-E2.2, HU-E4.1 · P1 / Alto
-// Tipo (ISTQB CT-PT): Load test · Condición: 20 VUs, 5 min, 30 s warm-up descartado, semilla ~5200 entradas
-// Oráculo: p95 < 500 ms y error < 1 % por endpoint, medido desde el cliente.
+// TC-PERF-01 · ESC01-CP01 · Las lecturas del núcleo cumplen p95 menor a 500 ms
+// Base: R3 Performance.tsv · README L333 · R2 N-01, N-02, N-03 · RSK-22 · P2 / Alto
+// Tipo (ISTQB CT-PT): Load test · Condición: 20 VUs, 5 min, 30 s de warm-up descartado
+// Precondición: red base = p50 de GET /api/core/health con 1 VU durante 1 min (med de red_base_ms) · cada VU con su asistente.
+// Oráculo: p95 de cada endpoint < 500 ms y tasa de error < 1 %.
 import { check, group, sleep } from 'k6';
-import { api, login, eventos, networkBaseline, loadProfile, SUSPENSION, ASISTENTE, think } from '../lib/common.js';
+import { api, registro, exigirEnv, eventos, networkBaseline, loadProfile, SUSPENSION, SMOKE, think } from '../lib/common.js';
+import { informe, STATS } from '../lib/informe.js';
 
 export const options = {
-  tags: { tc: 'TC-PERF-01', escenario: 'ESC01-CP01', prioridad: 'P1', severidad: 'Alto' },
+  tags: { tc: 'TC-PERF-01', escenario: 'ESC01-CP01', prioridad: 'P2', severidad: 'Alto' },
   scenarios: loadProfile('lecturas', 20, '5m'),
+  setupTimeout: '2m',
+  summaryTrendStats: STATS,
   thresholds: {
     ...SUSPENSION,
     'http_req_failed{scenario:steady}': ['rate<0.01'],
@@ -18,15 +22,20 @@ export const options = {
   },
 };
 
+export const handleSummary = (data) => informe(data, options, 'Las lecturas del núcleo cumplen p95 menor a 500 ms');
+
 export function setup() {
-  networkBaseline();
+  exigirEnv('TEAM');
+  networkBaseline(SMOKE ? 5 : 60);
   const ids = eventos().map((e) => e.id);
   if (!ids.length) throw new Error('Criterio de entrada: catálogo vacío (¿reset de semilla?)');
-  return { token: login(ASISTENTE).token, ids };
+  return { ids };
 }
 
-// Perfil operacional del comprador: busca -> mira disponibilidad -> revisa sus entradas.
-export function lecturas({ token, ids }) {
+let token; // un asistente propio por VU (estado de VU en k6)
+
+export function lecturas({ ids }) {
+  token = token || registro();
   group('catalogo', () => {
     const r = api('GET', '/api/core/eventos', { name: 'GET /eventos' });
     check(r, { 'eventos 200 con lista': (x) => x.status === 200 && Array.isArray(x.json('eventos')) });

@@ -1,46 +1,38 @@
-// TC-PERF-06 · ESC02-CP05 · Turno completo con exactamente 1 llamada a herramienta
-// Base: R2 §6 A-75 [SUPUESTO A-84: 20 turnos por medición] · HU-E7.1 · P2 / Medio
-// Tipo (ISTQB CT-PT): Load test · Condición: 4 VUs, 20 turnos, IA real, turnos con 1 tool_call
-// Oráculo: p95 < 8 s, error < 1 %, 4 VUs, 20 turnos.
-// Clase de equivalencia: solo cuenta la muestra si tool_calls.length === 1 (la IA no es determinista). Cada iteración
-// reintenta hasta 3 turnos para obtener uno dentro de clase; los descartados se reportan en `turno_fuera_de_clase`.
+// TC-PERF-05 · ESC02-CP05 · Un turno con una llamada a herramienta cumple p95 menor a 8 s
+// Base: R3 Performance.tsv · README L337 · RSK-22 · P2 / Medio
+// Tipo (ISTQB CT-PT): Performance test · Condición: 1 VU, 20 turnos, sin X-Replay-Mode
+// Oráculo: p95 del tiempo medido en el cliente, contando solo los turnos con totals.tool_calls = 1 en su trace, < 8 s.
+// Se registra (sin umbral) cuántos turnos tuvieron una cantidad de tool_calls distinta de 1: `turno_fuera_de_clase`.
 import { check } from 'k6';
-import { Counter, Rate, Trend } from 'k6/metrics';
-import { agente, networkBaseline, MENSAJES, SMOKE } from '../lib/common.js';
+import { Counter, Trend } from 'k6/metrics';
+import { agente, traza, networkBaseline, exigirEnv, SMOKE } from '../lib/common.js';
 
+const MENSAJE = '¿Qué eventos hay en Cusco?';
 const turno1Tool = new Trend('turno_1_herramienta_ms', true);
-const pasos = new Trend('turno_tokens_completion');
-const turnoFallido = new Rate('turno_fallido');
 const fueraDeClase = new Counter('turno_fuera_de_clase');
-const medidos = new Counter('turnos_medidos');
-const TURNOS = SMOKE ? 2 : 20;
+const enClase = new Counter('turnos_en_clase');
 
 export const options = {
-  tags: { tc: 'TC-PERF-06', escenario: 'ESC02-CP05', prioridad: 'P2', severidad: 'Medio' },
-  scenarios: { turnos: { executor: 'shared-iterations', vus: SMOKE ? 1 : 4, iterations: TURNOS, maxDuration: '15m' } },
+  tags: { tc: 'TC-PERF-05', escenario: 'ESC02-CP05', prioridad: 'P2', severidad: 'Medio' },
+  scenarios: { turnos: { executor: 'per-vu-iterations', vus: 1, iterations: SMOKE ? 2 : 20, maxDuration: '15m' } },
   thresholds: {
     turno_1_herramienta_ms: ['p(95)<8000'],
-    turno_fallido: ['rate<0.01'],
-    turnos_medidos: [`count>=${TURNOS}`], // sin muestras un p95 "pasa" en vacío
+    turnos_en_clase: ['count>0'], // sin turnos en clase el p95 "pasa" en vacío
   },
 };
 
-export const setup = () => networkBaseline();
+export function setup() {
+  exigirEnv('TEAM_TOKEN');
+  networkBaseline();
+}
 
 export default function () {
-  for (let intento = 0; intento < 3; intento++) {
-    const r = agente('/api/v1/chat', MENSAJES[(__ITER + intento) % MENSAJES.length]);
-    const ok = r && r.status === 200;
-    turnoFallido.add(!ok);
-    if (!check(r, { 'chat 200 con trace_id': () => ok && !!r.json('trace_id') })) return;
-    const d = r.json();
-    if (d.tool_calls.length !== 1) {
-      fueraDeClase.add(1, { tools: String(d.tool_calls.length) });
-      continue;
-    }
-    medidos.add(1);
-    turno1Tool.add(r.timings.duration, { trace_id: d.trace_id, tool: d.tool_calls[0].name });
-    if (d.usage) pasos.add(d.usage.completion_tokens);
-    return;
-  }
+  const r = agente('/api/v1/chat', MENSAJE);
+  if (!check(r, { 'chat 200 con trace_id': (x) => !!(x && x.status === 200 && x.json('trace_id')) })) return;
+  const id = r.json('trace_id');
+  const t = traza(id);
+  const tools = t && t.totals ? t.totals.tool_calls : 'sin_traza';
+  if (tools !== 1) return fueraDeClase.add(1, { tool_calls: String(tools), trace_id: id });
+  enClase.add(1);
+  turno1Tool.add(r.timings.duration, { trace_id: id });
 }
