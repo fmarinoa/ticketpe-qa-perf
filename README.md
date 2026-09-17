@@ -60,6 +60,8 @@ flowchart LR
   F --> G[Reporte en<br/>GitHub Pages]
 ```
 
+![Run #4 en GitHub Actions: gates → matrix en fila → publish, con el Job Summary por caso](docs/img/pipeline-jobs.png)
+
 **Un rojo ya dice de quién es el problema**, antes de abrir un log:
 
 | Step en rojo | Significa | Lo arregla |
